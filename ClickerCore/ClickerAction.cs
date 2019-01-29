@@ -32,21 +32,33 @@ namespace Exw.ClickerCore
 
     public class ClickAction : Action
     {
-        //public enum ButtonMask { BTN_LEFT, BTN_RIGHT, BTN_MIDDLE }
+        public enum ButtonMask { BTN_LEFT = 0x0002 }
         public int Button { get; private set; }
-        public ActionBehavior<int> Behavior { get; set; }
+        public uint IncreaseCounter { get; private set; }
+        public ActionBehavior<bool> Behavior { get; set; }
 
-        public ClickAction(int _button = 0x0002)
+        public ClickAction(uint _counter, int _button = (int)ButtonMask.BTN_LEFT)
         {
             Button = _button;
+            IncreaseCounter = _counter;
             ActionType = Type.ACTION_CLICK;
         }
 
-        public ClickAction(ActionBehavior<int> _behavior)
+        public ClickAction(int _button = (int)ButtonMask.BTN_LEFT)
+            : this(1, _button)
+        { }
+
+        public ClickAction(ActionBehavior<bool> _behavior, uint _counter, int _button = (int)ButtonMask.BTN_LEFT)
         {
+            Button = _button;
+            IncreaseCounter = _counter;
             Behavior = _behavior;
             ActionType = Type.ACTION_CLICK;
         }
+
+        public ClickAction(ActionBehavior<bool> _behavior, int _button = (int)ButtonMask.BTN_LEFT)
+            : this(_behavior, 1, _button)
+        { }
     }
 
     public class DelayAction : Action

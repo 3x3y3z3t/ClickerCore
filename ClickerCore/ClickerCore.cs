@@ -12,7 +12,7 @@ namespace Exw.ClickerCore
 {
     public abstract class Clicker
     {
-        #region Win32API Imports
+        #region Win32 API Imports
         public struct RECT
         {
             public int Left { get; set; }
@@ -36,7 +36,7 @@ namespace Exw.ClickerCore
         //private const int DWMWA_EXTENDED_FRAME_BOUNDS = 9;
         #endregion
 
-        public const string CLICKER_CORE_VERSION = "1.2.1";
+        public const string CLICKER_CORE_VERSION = "1.3";
 
         public Point GlobalOffset { get; protected set; }
         public string TargetAppName { get; protected set; }
@@ -44,10 +44,11 @@ namespace Exw.ClickerCore
         public bool AppRunning { get; private set; }
         public bool Running { get; private set; }
         public uint Counter { get; protected set; }
+        public float Mod { get; set; }
 
         private Process target;
         public Rectangle targetArea;
-        private List<Action> sequence;
+        protected List<Action> Sequence { get; private set; }
         private int seqIndex;
         private Thread thread;
 
@@ -58,11 +59,12 @@ namespace Exw.ClickerCore
             AppRunning = true;
             Running = false;
             Counter = 0;
+            Mod = 1.0f;
 
             target = null;
             targetArea = Rectangle.Empty;
             seqIndex = 0;
-            sequence = new List<Action>();
+            Sequence = new List<Action>();
             thread = new Thread(new ThreadStart(Run));
             Init();
             thread.Start();
@@ -135,6 +137,7 @@ namespace Exw.ClickerCore
         public void Pause()
         {
             Running = false;
+            seqIndex = 0;
         }
 
         public void Stop()
@@ -146,21 +149,21 @@ namespace Exw.ClickerCore
 
         public bool PerformAction(int _index = -1)
         {
-            if (_index >= sequence.Count)
+            if (_index >= Sequence.Count)
                 return false;
 
             if (_index < 0)
             {
                 _index = seqIndex;
                 //++seqIndex;
-                if (++seqIndex >= sequence.Count)
+                if (++seqIndex >= Sequence.Count)
                     seqIndex = 0;
             }
 
-            switch (sequence[_index].ActionType)
+            switch (Sequence[_index].ActionType)
             {
                 case Action.Type.ACTION_MOVE:
-                    MoveAction ma = (MoveAction)sequence[_index];
+                    MoveAction ma = (MoveAction)Sequence[_index];
                     Point pt = ma.Behavior == null ? ma.Position : ma.Behavior();
                     //Cursor.Position = new Point(ma.X - 1 + targetArea.X + GlobalOffset.X, ma.Y - 1 + targetArea.Y + GlobalOffset.Y);
                     //Thread.Sleep(17);
@@ -171,39 +174,42 @@ namespace Exw.ClickerCore
                     break;
 
                 case Action.Type.ACTION_CLICK:
-                    ClickAction ca = (ClickAction)sequence[_index];
-                    while (!ShouldClick())
-                        ;
-                    mouse_event(ca.Button, 0, 0, 0, 0); // press the button;
-                    mouse_event(ca.Button * 2, 0, 0, 0, 0); // release the button;
-                    ++Counter;
-                    Thread.Sleep(17); // stabilize for 1 frame to prevent "drag" behavior;
+                    ClickAction ca = (ClickAction)Sequence[_index];
+                    if ((ca.Behavior == null) ? true : ca.Behavior())
+                    {
+                        while (!ShouldClick())
+                            Thread.Sleep(17);
+                        mouse_event(ca.Button, 0, 0, 0, 0); // press the button;
+                        mouse_event(ca.Button * 2, 0, 0, 0, 0); // release the button;
+                        Counter += ca.IncreaseCounter;
+                        Thread.Sleep(17); // stabilize for 1 frame to prevent "drag" behavior;
+                    }
                     break;
 
                 case Action.Type.ACTION_DELAY:
-                    Thread.Sleep((int)((DelayAction)sequence[_index]).Delay);
+                    Thread.Sleep((int)(((DelayAction)Sequence[_index]).Delay * Mod));
                     break;
 
                 case Action.Type.ACTION_CUSTOM:
-                    ((CustomAction)sequence[_index]).Behavior();
+                    ((CustomAction)Sequence[_index]).Behavior();
                     break;
             }
 
             return true;
         }
 
-        public bool AddClick(int _button = 0x0002, int _index = -1)
-        {
-            if (_index > sequence.Count)
-                return false;
-            else if (_index >= 0)
-                sequence.Insert(_index, new ClickAction(_button));
-            else
-                sequence.Add(new ClickAction(_button));
-            if (_index >= 0 && _index <= seqIndex)
-                ++seqIndex;
-            return true;
-        }
+        //public bool AddClick(int _button = 0x0002, int _index = -1)
+        //{
+        //    if (_index > Sequence.Count)
+        //        return false;
+        //    else if (_index >= 0)
+        //        Sequence.Insert(_index, new ClickAction(_button));
+        //    else
+        //        Sequence.Add(new ClickAction(_button));
+        //    if (_index >= 0 && _index <= seqIndex)
+        //        ++seqIndex;
+        //    return true;
+        //}
 
         //public bool AddMove(int _x, int _y, int _index = -1)
         //{
@@ -220,12 +226,12 @@ namespace Exw.ClickerCore
 
         public bool AddDelay(uint _delay = 17, int _index = -1)
         {
-            if (_index > sequence.Count)
+            if (_index > Sequence.Count)
                 return false;
             else if (_index >= 0)
-                sequence.Insert(_index, new DelayAction(_delay == 0 ? 1 : _delay));
+                Sequence.Insert(_index, new DelayAction(_delay == 0 ? 1 : _delay));
             else
-                sequence.Add(new DelayAction(_delay == 0 ? 1 : _delay));
+                Sequence.Add(new DelayAction(_delay == 0 ? 1 : _delay));
             if (_index >= 0 && _index <= seqIndex)
                 ++seqIndex;
             return true;
@@ -233,12 +239,12 @@ namespace Exw.ClickerCore
 
         public bool Add(Action _action, int _index = -1)
         {
-            if (_index > sequence.Count)
+            if (_index > Sequence.Count)
                 return false;
             else if (_index >= 0)
-                sequence.Insert(_index, _action);
+                Sequence.Insert(_index, _action);
             else
-                sequence.Add(_action);
+                Sequence.Add(_action);
             if (_index >= 0 && _index <= seqIndex)
                 ++seqIndex;
             return true;
@@ -254,9 +260,24 @@ namespace Exw.ClickerCore
             return Add(new MoveAction(_behavior), _index);
         }
 
-        public bool AddClick(ActionBehavior<int> _behavior, int _index = -1)
+        public bool AddClick(int _button = (int)ClickAction.ButtonMask.BTN_LEFT, int _index = -1)
         {
-            return Add(new ClickAction(_behavior), _index);
+            return Add(new ClickAction(_button), _index);
+        }
+
+        public bool AddClick(uint _counter, int _button = (int)ClickAction.ButtonMask.BTN_LEFT, int _index = -1)
+        {
+            return Add(new ClickAction(_counter, _button), _index);
+        }
+
+        public bool AddClick(ActionBehavior<bool> _behavior, int _button = (int)ClickAction.ButtonMask.BTN_LEFT, int _index = -1)
+        {
+            return Add(new ClickAction(_behavior, _button), _index);
+        }
+
+        public bool AddClick(ActionBehavior<bool> _behavior, uint _counter, int _button = (int)ClickAction.ButtonMask.BTN_LEFT, int _index = -1)
+        {
+            return Add(new ClickAction(_behavior, _counter, _button), _index);
         }
 
         public bool AddDelay(ActionBehavior<int> _behavior, int _index = -1)
@@ -271,9 +292,9 @@ namespace Exw.ClickerCore
 
         public bool Remove(int _index)
         {
-            if (_index < 0 || _index >= sequence.Count)
+            if (_index < 0 || _index >= Sequence.Count)
                 return false;
-            sequence.RemoveAt(_index);
+            Sequence.RemoveAt(_index);
             if (seqIndex > _index)
                 --seqIndex;
             return true;
@@ -281,10 +302,10 @@ namespace Exw.ClickerCore
 
         public bool Skip(int _count = 1)
         {
-            if (sequence.Count - seqIndex < _count)
+            if (Sequence.Count - seqIndex < _count)
                 return false;
             seqIndex += _count;
-            if (seqIndex >= sequence.Count)
+            if (seqIndex >= Sequence.Count)
                 seqIndex = 0;
             return true;
         }
